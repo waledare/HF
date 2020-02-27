@@ -2,33 +2,26 @@ import qualified Data.ByteString.Char8 as L
 import Data.List
 import System.IO
 import Control.Exception
+import Data.Conduit
+import qualified Data.Conduit.Combinators as C
+import Control.Monad.Trans.Resource
 
-file :: String
-file = "char.csv"
+file :: ConduitM () L.ByteString ResIO ()
+file = C.sourceFile "char.csv"
 
-countLines :: L.ByteString -> Int
-countLines = length . L.split '\n' 
+newChar char = toEnum . fromEnum $ char
 
-countCols :: L.ByteString -> Int
-countCols = length . L.split ',' 
+countCols = length . L.split ','
 
-dimension :: L.ByteString -> (Int , [Int])
-dimension xs = 
-    let lines = L.split '\n' xs 
-        lineCount = length lines
-        rowDim = nub $ map countCols lines
-    in  (lineCount, rowDim)
+countLines :: ConduitM () Void ResIO Integer
+countLines = file .| C.splitOnUnboundedE (== newChar '\n') .| C.length 
 
-loopProcess :: [Int] -> Handle -> IO [Int]
-loopProcess xs handle = do
-    eline <- (try $ L.hGetLine handle :: IO (Either IOError L.ByteString))
-    case eline of
-        Right line -> loopProcess (countCols line : xs) handle 
-        Left _e    -> return xs
+getLines :: ConduitM () L.ByteString ResIO ()
+getLines = file .| C.splitOnUnboundedE (== newChar '\n')   
 
-oneAtaTime :: FilePath -> IO [Int]
-oneAtaTime filePath = do
-    handle <- openFile filePath ReadMode
-    withFile filePath ReadMode (loopProcess []) 
+getLengths :: ConduitM () Int ResIO ()
+getLengths = getLines .| C.map countCols  
 
-main = print =<< (oneAtaTime file) 
+--main = nub <$> (runResourceT  $ runConduit getLengths)
+    
+
